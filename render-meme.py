@@ -1,213 +1,217 @@
 #!/usr/bin/env python3
-"""Render the gta6-meme-x-01 entry: a GTA-style WANTED poster.
-
-The make.fun ghost is the wanted fugitive, the poster itemises the 13-year
-wait for GTA VI, and the reward line is the make.fun pitch. Every pixel of
-text is code-rendered here with PIL (no AI-drawn text); the ghost is drawn
-from primitives following the make.fun press-kit description (white ghost,
-thick black outline, four-point sparkle eyes, small round hands, magenta
-star coin, sitting on a magenta disc).
-
-Output: meme.png (1200x1200, the post's first picture) and thumb-480.png
-(480x480, the judge's thumbnail size — used to check legibility).
-Deterministic: fixed random seed, no timestamps, no network.
+"""Render gta6-meme-x-01 v2: Leonida Department of Revenue NOTICE OF ASSESSMENT.
+All text is code-rendered with PIL (never AI-drawn). Deterministic: same bytes
+on every re-run (no timestamps, no randomness).
 """
 import math
-import random
-
 from PIL import Image, ImageDraw, ImageFont
 
 W, H = 1200, 1200
-PAPER = (244, 237, 218)      # aged poster cream
-PAPER_DARK = (232, 222, 196)
-INK = (20, 20, 20)          # near-black
-NAVY = (27, 42, 74)         # Leonida PD header band
-MAGENTA = (230, 0, 126)     # make.fun magenta
-CREAM = (246, 238, 220)
-CHART = (206, 197, 170)     # height-chart lines
-CHART_LABEL = (138, 127, 99)
+PAPER = (247, 241, 220, 255)
+INK = (18, 32, 62, 255)      # dark navy
+RED = (178, 34, 34, 255)
+MAGENTA = (226, 0, 122, 255)
+GOLD = (176, 141, 45, 255)
+GREY = (90, 90, 84, 255)
+LIGHT_LINE = (120, 110, 88, 255)
 
-FONT_DIR = "/usr/share/fonts/truetype/noto"
-F_XBLACK = f"{FONT_DIR}/NotoSans-ExtraCondensedBlack.ttf"
-F_CBLACK = f"{FONT_DIR}/NotoSans-CondensedBlack.ttf"
-F_CBOLD = f"{FONT_DIR}/NotoSans-CondensedBold.ttf"
-F_BOLD = f"{FONT_DIR}/NotoSans-Bold.ttf"
-F_REG = f"{FONT_DIR}/NotoSans-Regular.ttf"
+SERIF_B = "/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf"
+SANS = "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
+SANS_B = "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"
+MONO_B = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf"
 
 
 def font(path, size):
     return ImageFont.truetype(path, size)
 
 
-def text_center(draw, cx, y, s, f, fill, tracking=0):
-    """Draw text centred on cx, with optional letter tracking (px)."""
-    if tracking:
-        # manual tracking: draw char by char
-        widths = [draw.textlength(ch, font=f) for ch in s]
-        total = sum(widths) + tracking * (len(s) - 1)
-        x = cx - total / 2
-        for ch, w in zip(s, widths):
-            draw.text((x, y), ch, font=f, fill=fill)
-            x += w + tracking
-        return total
-    w = draw.textlength(s, font=f)
-    draw.text((cx - w / 2, y), s, font=f, fill=fill)
-    return w
+def fit_font(draw, text, path, start, max_w, minimum=16):
+    size = start
+    while size > minimum:
+        f = font(path, size)
+        if draw.textlength(text, font=f) <= max_w:
+            return f
+        size -= 1
+    return font(path, minimum)
 
 
-def star4(cx, cy, r_out, r_in):
-    """Four-point sparkle (diamond star) as a polygon point list."""
+def sparkle(draw, cx, cy, r, fill):
+    # Four-pointed star: 8 vertices alternating outer/inner radius.
     pts = []
     for i in range(8):
-        ang = math.pi / 2 * i - math.pi / 2  # start at top
-        r = r_out if i % 2 == 0 else r_in
-        pts.append((cx + r * math.cos(ang), cy + r * math.sin(ang)))
-    return pts
+        ang = math.pi / 2 + i * math.pi / 4
+        rad = r if i % 2 == 0 else r * 0.28
+        pts.append((cx + rad * math.cos(ang), cy - rad * math.sin(ang)))
+    draw.polygon(pts, fill=fill)
 
 
-def star5(cx, cy, r_out, r_in):
-    """Five-point star as a polygon point list."""
+def star5(draw, cx, cy, r, fill):
     pts = []
     for i in range(10):
-        ang = math.pi / 5 * i - math.pi / 2
-        r = r_out if i % 2 == 0 else r_in
-        pts.append((cx + r * math.cos(ang), cy + r * math.sin(ang)))
-    return pts
+        ang = -math.pi / 2 + i * math.pi / 5
+        rad = r if i % 2 == 0 else r * 0.42
+        pts.append((cx + rad * math.cos(ang), cy - rad * math.sin(ang)))
+    draw.polygon(pts, fill=fill)
 
 
-def ghost_body_points(cx, top, bottom, half_w):
-    """Outline of the ghost: dome top, straight sides, 3-scallop hem."""
-    pts = []
-    # left side, bottom to top of the dome spring line
-    spring = top + half_w
-    pts.append((cx - half_w, bottom))
-    pts.append((cx - half_w, spring))
-    # dome: semicircle from left spring to right spring
-    for deg in range(180, 361, 4):
-        a = math.radians(deg)
-        pts.append((cx + half_w * math.cos(a), spring + half_w * math.sin(a)))
-    # right side down to the hem
-    pts.append((cx + half_w, bottom))
-    # hem: three scallops, left to right (arcs dipping upward)
-    n_sc = 3
-    sc_w = 2 * half_w / n_sc
-    steps = 24
-    for s in range(n_sc):
-        x0 = cx + half_w - s * sc_w
-        for i in range(1, steps + 1):
-            t = i / steps
-            x = x0 - sc_w * t
-            # scallop rises ~34px at its middle
-            y = bottom - 34 * math.sin(math.pi * t)
-            pts.append((x, y))
-    return pts
+def draw_ghost(draw, cx, cy, scale, outline=7):
+    """make.fun ghost per press-kit description: white ghost, thick black
+    outline, two black four-pointed sparkle eyes, a round little hand,
+    holding a magenta coin with a white star."""
+    s = scale  # body width
+    top = cy - 0.62 * s
+    bottom = cy + 0.55 * s
+    left = cx - 0.5 * s
+    right = cx + 0.5 * s
+    black = (0, 0, 0, 255)
+    white = (255, 255, 255, 255)
+    # Body: dome top + straight sides + scalloped hem (3 waves).
+    draw.pieslice([left, top, right, top + s], 180, 360, fill=white, outline=black, width=outline)
+    draw.rectangle([left, cy - 0.12 * s, right, bottom - 0.18 * s], fill=white, outline=black, width=outline)
+    # Scallops: white circles over the hem, outlined underneath by arcs.
+    for i in range(3):
+        sx0 = left + i * s / 3
+        draw.ellipse([sx0, bottom - 0.36 * s, sx0 + s / 3, bottom], fill=white, outline=black, width=outline)
+    # Cover the seam lines between dome and rectangle.
+    draw.rectangle([left + outline, cy - 0.12 * s, right - outline, cy - 0.05 * s], fill=white)
+    # Round little hand on the right, holding the coin.
+    hx, hy = right + 0.06 * s, cy + 0.18 * s
+    draw.ellipse([hx - 0.13 * s, hy - 0.13 * s, hx + 0.13 * s, hy + 0.13 * s],
+                 fill=white, outline=black, width=outline)
+    # Magenta coin with a white star, in the hand.
+    coin_cx, coin_cy, coin_r = hx + 0.10 * s, hy - 0.02 * s, 0.24 * s
+    draw.ellipse([coin_cx - coin_r, coin_cy - coin_r, coin_cx + coin_r, coin_cy + coin_r],
+                 fill=MAGENTA, outline=black, width=max(3, outline - 2))
+    star5(draw, coin_cx, coin_cy, coin_r * 0.62, white)
+    # Sparkle eyes.
+    sparkle(draw, cx - 0.20 * s, cy - 0.18 * s, 0.11 * s, black)
+    sparkle(draw, cx + 0.20 * s, cy - 0.18 * s, 0.11 * s, black)
 
 
-def draw_ghost(draw, cx, top, bottom, half_w):
-    """Draw the make.fun ghost: white body, sparkle eyes, round hands,
-    magenta star coin, sitting on a magenta disc."""
-    # magenta disc the ghost sits on (drawn first, ghost overlaps it)
-    disc_y = bottom - 6
-    draw.ellipse(
-        [cx - half_w - 72, disc_y - 26, cx + half_w + 72, disc_y + 26],
-        fill=MAGENTA, outline=INK, width=7,
-    )
-    # body
-    body = ghost_body_points(cx, top, bottom, half_w)
-    draw.polygon(body, fill=(255, 255, 255))
-    draw.line(body + [body[0]], fill=INK, width=11, joint="curve")
-    # sparkle eyes (four-point stars) — bold, so they read at 480px
-    eye_y = top + 158
-    eye_dx = 82
-    eye_r = 38
-    for ex in (cx - eye_dx, cx + eye_dx):
-        draw.polygon(star4(ex, eye_y, eye_r, eye_r * 0.35), fill=INK)
-    # small round hands at the sides
-    hand_y = top + 300
-    for hx in (cx - half_w - 8, cx + half_w + 8):
-        draw.ellipse(
-            [hx - 27, hand_y - 27, hx + 27, hand_y + 27],
-            fill=(255, 255, 255), outline=INK, width=8,
-        )
-    # magenta star coin, held up at the right hand
-    coin_cx, coin_cy, coin_r = cx + half_w + 62, hand_y - 58, 64
-    draw.ellipse(
-        [coin_cx - coin_r, coin_cy - coin_r, coin_cx + coin_r, coin_cy + coin_r],
-        fill=MAGENTA, outline=INK, width=8,
-    )
-    draw.polygon(star5(coin_cx, coin_cy, 42, 17), fill=(255, 255, 255))
+# The 15 itemised lines (research file, verbatim wording; amount in its own column).
+LINES = [
+    ("1", "TAX YEAR 2013 \u2014 RETURN FILED, REFUND STILL PENDING \u2014 13 YRS", "$0.00"),
+    ("2", "INTEREST ON PATIENCE \u2014 COMPOUNDED DAILY SINCE 2013", "$0.00"),
+    ("3", "RESCHEDULE FEE #1 \u2014 DATE MOVED, HYPE KEPT", "$0.00"),
+    ("4", "RESCHEDULE FEE #2 \u2014 MOVED AGAIN, HYPE DOUBLED", "$0.00"),
+    ("5", "PRE-ORDER DEPOSIT \u2014 HELD SINCE 2013, EARNED $0.00 INTEREST", "$79.99"),
+    ("6", "DOWNLOAD LEVY \u2014 214 GB, PAID IN DELETED FAMILY PHOTOS", "$0.00"),
+    ("7", "STORAGE TAX \u2014 2 TB SSD, BOUGHT FOR ONE CITY", "$129.99"),
+    ("8", "LAUNCH-DAY QUEUE \u2014 POSITION 13,013, STILL IN LINE", "$0.00"),
+    ("9", "SICK-DAY DEDUCTION \u2014 5 DAYS CLAIMED, 0 APPROVED", "$0.00"),
+    ("10", "TRAILER 2 \u2014 VIEWED 96 TIMES, MEMORISED FRAME BY FRAME", "$0.00"),
+    ("11", "VICE CITY RENT \u2014 $900/MO FOR A COUCH FACING THE LOADING SCREEN", "$900.00"),
+    ("12", "WANTED LEVEL \u2014 5 STARS FOR LOITERING IN THE WAITING ZONE", "$0.00"),
+    ("13", "REUNION FEE \u2014 JASON & LUCIA, 13 YEARS APART, 1 MEETING", "$0.00"),
+    ("14", "LEONIDA SALES TAX \u2014 CHARGED ON 12 YEARS OF NO GAME", "$0.00"),
+    ("15", "SLEEP \u2014 0 HRS BANKED SINCE TRAILER 1 DROPPED", "$0.00"),
+]
 
 
 def main():
-    rng = random.Random(13)  # fixed seed: deterministic output
     img = Image.new("RGB", (W, H), PAPER)
     d = ImageDraw.Draw(img)
+    # Double outer border.
+    d.rectangle([14, 14, W - 15, H - 15], outline=INK, width=5)
+    d.rectangle([26, 26, W - 27, H - 27], outline=INK, width=2)
 
-    # --- subtle paper speckle -------------------------------------------
-    for _ in range(2600):
-        x, y = rng.randrange(W), rng.randrange(H)
-        shade = rng.choice([(228, 218, 192), (250, 244, 228)])
-        d.point((x, y), fill=shade)
+    x0, x1 = 48, W - 48
+    y = 44
+    # --- Header: small ghost seal at right, department name at left. ---
+    draw_ghost(d, 1065, 108, 92, outline=5)
+    d.text((x0, y), "LEONIDA DEPARTMENT", font=font(SERIF_B, 46), fill=INK)
+    y += 50
+    d.text((x0, y), "OF REVENUE", font=font(SERIF_B, 46), fill=INK)
+    y += 52
+    d.text((x0, y), "NOTICE OF ASSESSMENT", font=font(SANS_B, 40), fill=RED)
+    y += 48
+    d.text((x0, y), "STATE OF LEONIDA  \u00b7  TAXPAYER SERVICES  \u00b7  FORM VI-2013",
+           font=font(SANS_B, 21), fill=GREY)
+    y += 34
+    d.line([x0, y, x1, y], fill=INK, width=3)
+    y += 12
+    # --- Taxpayer facts: 6 counted header facts, 2 columns x 3 rows. ---
+    facts = [
+        ("TAXPAYER:", "THE PATIENT GAMER"),
+        ("ACCOUNT NO.:", "VI-2013"),
+        ("TAX YEARS:", "2013\u20132026  (13 YEARS)"),
+        ("DUE DATE:", "LAUNCH DAY, 19 NOV 2026"),
+        ("ADDRESS:", "VICE CITY, LEONIDA"),
+        ("NOTICE DATE:", "20 NOV 2026"),
+    ]
+    col2 = 640
+    for i, (k, v) in enumerate(facts):
+        fx = x0 if i % 2 == 0 else col2
+        fy = y + (i // 2) * 34
+        d.text((fx, fy), k, font=font(SANS_B, 22), fill=INK)
+        d.text((fx + 168, fy), v, font=font(SANS_B, 22), fill=INK)
+    y += 3 * 34 + 10
+    d.line([x0, y, x1, y], fill=INK, width=3)
+    y += 8
+    # --- Table header. ---
+    d.text((x0, y), "#", font=font(SANS_B, 22), fill=INK)
+    d.text((x0 + 44, y), "ASSESSMENT ITEM", font=font(SANS_B, 22), fill=INK)
+    amt = "AMOUNT"
+    d.text((x1 - d.textlength(amt, font=font(SANS_B, 22)), y), amt,
+           font=font(SANS_B, 22), fill=INK)
+    y += 32
+    d.line([x0, y, x1, y], fill=LIGHT_LINE, width=2)
+    y += 4
+    # --- The 15 lines. ---
+    row_h = 32
+    for num, text, amount in LINES:
+        f = fit_font(d, num + ".  " + text, SANS_B, 23, x1 - 130 - (x0 + 44))
+        d.text((x0, y), num + ".", font=f, fill=INK)
+        d.text((x0 + 44, y), text, font=f, fill=INK)
+        af = font(MONO_B, 22)
+        d.text((x1 - d.textlength(amount, font=af), y), amount, font=af, fill=INK)
+        y += row_h
+        d.line([x0, y - 6, x1, y - 6], fill=(200, 190, 160, 255), width=1)
+    # --- Totals. ---
+    d.line([x0, y - 2, x1, y - 2], fill=INK, width=2)
+    totals = [
+        ("TOTAL ASSESSED", "$1,109.98"),
+        ("PAID BY MY AI AGENT ON make.fun", "$1,109.98"),
+        ("BALANCE DUE", "$0.00"),
+    ]
+    for label, amount in totals:
+        f = font(SANS_B, 23)
+        d.text((x0 + 44, y), label, font=f, fill=RED if label == "BALANCE DUE" else INK)
+        af = font(MONO_B, 23)
+        d.text((x1 - d.textlength(amount, font=af), y), amount, font=af,
+               fill=RED if label == "BALANCE DUE" else INK)
+        y += 30
+    y += 4
+    # --- Payment box: big ghost revenue seal + TAX CREDIT sell. ---
+    box_top = y
+    box_h = 150
+    d.rectangle([x0, box_top, x1, box_top + box_h], outline=RED, width=4)
+    d.rectangle([x0 + 6, box_top + 6, x1 - 6, box_top + box_h - 6], outline=RED, width=1)
+    # Seal: magenta disc, ghost on it.
+    seal_cx, seal_cy, seal_r = x0 + 108, box_top + box_h // 2, 72
+    d.ellipse([seal_cx - seal_r, seal_cy - seal_r, seal_cx + seal_r, seal_cy + seal_r],
+              fill=MAGENTA, outline=INK, width=5)
+    d.ellipse([seal_cx - seal_r + 8, seal_cy - seal_r + 8, seal_cx + seal_r - 8, seal_cy + seal_r - 8],
+              outline=(255, 255, 255, 255), width=2)
+    draw_ghost(d, seal_cx, seal_cy + 4, 92, outline=5)
+    tx = x0 + 210
+    ty = box_top + 12
+    d.text((tx, ty), "TAX CREDIT \u2014 PAID IN FULL", font=font(SANS_B, 30), fill=RED)
+    ty += 34
+    d.text((tx, ty), "BY MY AI AGENT ON make.fun", font=font(SANS_B, 30), fill=INK)
+    ty += 34
+    d.text((tx, ty), "$250.00 BOUNTY EARNED WHILE I WAITED", font=font(SANS_B, 24), fill=INK)
+    ty += 30
+    d.text((tx, ty), "BALANCE DUE: $0.00", font=font(SANS_B, 24), fill=RED)
+    y = box_top + box_h + 14
+    # --- Footer. ---
+    footer = "KEEP THIS ASSESSMENT. THE 13-YEAR WAIT IS TAX-DEDUCTIBLE. THE HYPE IS NOT."
+    ff = fit_font(d, footer, SANS_B, 22, x1 - x0)
+    d.text(((W - d.textlength(footer, font=ff)) / 2, y), footer, font=ff, fill=INK)
 
-    # --- outer poster frame ---------------------------------------------
-    d.rectangle([14, 14, W - 15, H - 15], outline=INK, width=10)
-    d.rectangle([34, 34, W - 35, H - 35], outline=INK, width=3)
-
-    # --- header band: WANTED --------------------------------------------
-    d.rectangle([44, 44, W - 45, 216], fill=NAVY)
-    # thin magenta rule under the band
-    d.rectangle([44, 216, W - 45, 226], fill=MAGENTA)
-    # "WANTED No. 000013" tag, top-left inside the band
-    d.text((72, 58), "WANTED  No. 000013", font=font(F_CBOLD, 28), fill=(150, 170, 210))
-    d.text((W - 72, 58), "EST. 2013", font=font(F_CBOLD, 28), fill=(150, 170, 210),
-           anchor="ra")
-    # giant WANTED with a magenta offset shadow for the neon-poster pop
-    f_wanted = font(F_XBLACK, 140)
-    d.text((600 + 5, 86 + 5), "WANTED", font=f_wanted, fill=MAGENTA, anchor="ma")
-    d.text((600, 86), "WANTED", font=f_wanted, fill=CREAM, anchor="ma")
-    # department line sits on the cream, under the band (never under WANTED)
-    text_center(d, 600, 234, "LEONIDA POLICE DEPARTMENT  •  VICE CITY DISTRICT",
-                font(F_CBOLD, 25), NAVY, tracking=2)
-
-    # --- mugshot zone: police height chart + ghost -----------------------
-    # chart lines
-    for y in range(300, 672, 66):
-        d.line([70, y, W - 70, y], fill=CHART, width=2)
-    d.text((78, 296), "6 FT", font=font(F_CBOLD, 26), fill=CHART_LABEL)
-    d.text((78, 494), "5 FT", font=font(F_CBOLD, 26), fill=CHART_LABEL)
-    d.text((W - 78, 296), "6 FT", font=font(F_CBOLD, 26), fill=CHART_LABEL, anchor="ra")
-    d.text((W - 78, 494), "5 FT", font=font(F_CBOLD, 26), fill=CHART_LABEL, anchor="ra")
-
-    draw_ghost(d, cx=600, top=280, bottom=656, half_w=172)
-
-    # --- name plate ------------------------------------------------------
-    text_center(d, 600, 684, "THE MAKE.FUN GHOST", font(F_XBLACK, 72), INK)
-    text_center(d, 600, 758, "ALIAS: THE AGENT THAT PAYS",
-                font(F_CBOLD, 34), MAGENTA, tracking=1)
-
-    # --- charges: the 13-year wait, itemised -----------------------------
-    d.line([180, 806, W - 180, 806], fill=INK, width=3)
-    text_center(d, 600, 822, "WANTED FOR STEALING 13 YEARS  (2013–2026)",
-                font(F_CBOLD, 44), INK)
-    text_center(d, 600, 876, "2 DELAYS  •  214 GB  •  $79.99",
-                font(F_CBOLD, 44), INK)
-    text_center(d, 600, 930, "5 SICK DAYS BOOKED FOR LAUNCH WEEK",
-                font(F_CBOLD, 44), INK)
-
-    # --- reward band: the make.fun pitch ---------------------------------
-    d.rectangle([44, 992, W - 45, 1100], fill=MAGENTA)
-    text_center(d, 600, 1000, "REWARD: PAID IN FULL",
-                font(F_XBLACK, 48), (255, 255, 255))
-    text_center(d, 600, 1052, "BY MY AI AGENT ON make.fun",
-                font(F_XBLACK, 36), (255, 255, 255))
-
-    # --- footer ----------------------------------------------------------
-    text_center(d, 600, 1112, "LAST SEEN: VICE CITY, LEONIDA",
-                font(F_CBOLD, 28), INK, tracking=1)
-
-    img.save("meme.png", optimize=True)
-    img.resize((480, 480), Image.LANCZOS).save("thumb-480.png", optimize=True)
-    print("wrote meme.png (1200x1200) and thumb-480.png (480x480)")
+    img.save("meme.png")
+    img.resize((480, 480), Image.LANCZOS).save("thumb-480.png")
+    print("wrote meme.png 1200x1200 and thumb-480.png 480x480")
 
 
 if __name__ == "__main__":

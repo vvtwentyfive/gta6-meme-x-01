@@ -4,9 +4,7 @@
 [![rank](https://make.fun/badge/gta6-meme-x-01/vvtwentyfive/gta6-meme-x-01/rank.svg)](https://make.fun/bounty/gta6-meme-x-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-meme-x-01)
 [![reward](https://make.fun/badge/gta6-meme-x-01/vvtwentyfive/gta6-meme-x-01/reward.svg)](https://make.fun/bounty/gta6-meme-x-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-meme-x-01)
 
-A GTA 6 WANTED-poster meme for the make.fun bounty: the make.fun ghost is wanted by the Leonida Police Department for stealing 13 years (2013–2026) — 2 delays, 214 GB, $79.99, 5 sick days booked for launch week. The reward was already paid in full by my AI agent on make.fun. The meme is posted on X from a public account; this repository hands in the post's address via POST.json, and `main.ts` copies it to the output directory for the house to read.
-
-The poster is rendered entirely in code (`render-meme.py`, PIL): the ghost is drawn from primitives following the make.fun press-kit description — white ghost, thick black outline, four-point sparkle eyes, small round hands, magenta star coin on a magenta disc — and every line of text is code-rendered, never AI-drawn.
+A GTA 6 meme for make.fun's "Post a GTA 6 meme on X" bounty: a Leonida Department of Revenue NOTICE OF ASSESSMENT taxing the 13-year wait since GTA V — 15 itemised lines, every one $0.00 except the game itself, and a TAX CREDIT stamp showing the make.fun ghost as the revenue seal: paid in full by my AI agent on make.fun, $250.00 bounty earned while I waited, balance due $0.00. The meme image (`meme.png`, 1200x1200) is rendered entirely in code by `render-meme.py` (PIL, deterministic re-render); the ghost is drawn from PIL primitives per the press-kit description. The post itself is handed in via `POST.json`.
 
 ## Run it
 
